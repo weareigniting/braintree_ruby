@@ -1,6 +1,3 @@
-== 2.24.0
-* Adds device data to transactions, customers, and credit cards.
-
 == 2.23.0
 * Adds disbursement details to transactions.
 * Adds image_url to transactions.

@@ -81,7 +81,6 @@ describe Braintree::Customer do
         :last_name,
         :phone,
         :website,
-        :device_data,
         {:credit_card => [
           :billing_address_id,
           :cardholder_name,
@@ -93,7 +92,6 @@ describe Braintree::Customer do
           :number,
           :token,
           :venmo_sdk_payment_method_code,
-          :device_data,
           {:options => [:make_default, :verification_merchant_account_id, :verify_card, :venmo_sdk_session, :fail_on_duplicate_payment_method]},
           {:billing_address => [
             :company,
@@ -126,7 +124,6 @@ describe Braintree::Customer do
         :last_name,
         :phone,
         :website,
-        :device_data,
         {:credit_card => [
           :billing_address_id,
           :cardholder_name,
@@ -138,7 +135,6 @@ describe Braintree::Customer do
           :number,
           :token,
           :venmo_sdk_payment_method_code,
-          :device_data,
           {:options => [
             :make_default,
             :verification_merchant_account_id,
