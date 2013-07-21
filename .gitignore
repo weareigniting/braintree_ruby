@@ -1,6 +1,5 @@
 bt_rdoc
 rdoc
-*.gem
 tags
 .rvmrc
 
