@@ -8,6 +8,14 @@ module Braintree
       Token = 'token'
     end
 
+    module EscrowStatus
+      SubmittedForEscrow = 'submitted_for_escrow'
+      HeldInEscrow = 'held_in_escrow'
+      SubmittedForRelease = 'submitted_for_release'
+      Released = 'released'
+      RefundedFromEscrow = 'refunded_from_escrow'
+    end
+
     module GatewayRejectionReason
       AVS = "avs"
       AVSAndCVV = "avs_and_cvv"
@@ -50,6 +58,7 @@ module Braintree
     attr_reader :cvv_response_code
     attr_reader :disbursement_details
     attr_reader :descriptor
+    attr_reader :escrow_status
     attr_reader :gateway_rejection_reason
     attr_reader :merchant_account_id
     attr_reader :order_id
@@ -85,6 +94,14 @@ module Braintree
     # See http://www.braintreepayments.com/docs/ruby/transactions/create
     def self.create!(attributes)
       return_object_or_raise(:transaction) { create(attributes) }
+    end
+
+    def self.cancel_release(transaction_id)
+      Configuration.gateway.transaction.cancel_release(transaction_id)
+    end
+
+    def self.cancel_release!(transaction_id)
+      return_object_or_raise(:transaction) { cancel_release(transaction_id) }
     end
 
     def self.clone_transaction(transaction_id, attributes)
@@ -124,6 +141,14 @@ module Braintree
       Configuration.gateway.transaction.find(id)
     end
 
+    def self.hold_for_escrow(id)
+      Configuration.gateway.transaction.hold_for_escrow(id)
+    end
+
+    def self.hold_for_escrow!(id)
+      return_object_or_raise(:transaction) { hold_for_escrow(id) }
+    end
+
     # See http://www.braintreepayments.com/docs/ruby/transactions/refund
     def self.refund(id, amount = nil)
       Configuration.gateway.transaction.refund(id, amount)
@@ -147,6 +172,14 @@ module Braintree
     # See http://www.braintreepayments.com/docs/ruby/transactions/search
     def self.search(&block)
       Configuration.gateway.transaction.search(&block)
+    end
+
+    def self.submit_for_release(transaction_id)
+      Configuration.gateway.transaction.submit_for_release(transaction_id)
+    end
+
+    def self.submit_for_release!(transaction_id)
+      return_object_or_raise(:transaction) { submit_for_release(transaction_id) }
     end
 
     # See http://www.braintreepayments.com/docs/ruby/transactions/submit_for_settlement

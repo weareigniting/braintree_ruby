@@ -953,6 +953,42 @@ describe Braintree::Transaction do
       end
     end
 
+    context "escrow" do
+      it "allows specifying transactions to be held for escrow" do
+        result = Braintree::Transaction.create(
+          :type => "sale",
+          :amount => Braintree::Test::TransactionAmounts::Authorize,
+          :merchant_account_id => SpecHelper::NonDefaultSubMerchantAccountId,
+          :credit_card => {
+            :number => Braintree::Test::CreditCardNumbers::Visa,
+            :expiration_date => "12/12",
+          },
+          :service_fee_amount => "10.00",
+          :options => {:hold_for_escrow => true}
+        )
+
+        result.success?.should == true
+        result.transaction.escrow_status.should == Braintree::Transaction::EscrowStatus::SubmittedForEscrow
+      end
+
+      it "raises an error if transaction merchant account is a master" do
+        result = Braintree::Transaction.create(
+          :type => "sale",
+          :amount => Braintree::Test::TransactionAmounts::Authorize,
+          :merchant_account_id => SpecHelper::NonDefaultMerchantAccountId,
+          :credit_card => {
+            :number => Braintree::Test::CreditCardNumbers::Visa,
+            :expiration_date => "12/12",
+          },
+          :service_fee_amount => "1.00",
+          :options => {:hold_for_escrow => true}
+        )
+        result.success?.should == false
+        expected_error_code = Braintree::ErrorCodes::Transaction::CannotHoldForEscrow
+        result.errors.for(:transaction).on(:base)[0].code.should == expected_error_code
+      end
+    end
+
     describe "venmo_sdk" do
       it "can create a card with a venmo sdk payment method code" do
         result = Braintree::Transaction.create(
@@ -1556,6 +1592,101 @@ describe Braintree::Transaction do
     end
   end
 
+  describe "self.submit_for_release" do
+    it "returns the transaction if successful" do
+      original_transaction = create_escrowed_transcation
+
+      result = Braintree::Transaction.submit_for_release(original_transaction.id)
+      result.transaction.escrow_status.should == Braintree::Transaction::EscrowStatus::SubmittedForRelease
+    end
+
+    it "returns an error result if escrow_status is not HeldForEscrow" do
+      transaction = Braintree::Transaction.sale!(
+        :amount => Braintree::Test::TransactionAmounts::Authorize,
+        :merchant_account_id => SpecHelper::NonDefaultSubMerchantAccountId,
+        :credit_card => {
+          :number => Braintree::Test::CreditCardNumbers::Visa,
+          :expiration_date => "05/2009"
+        },
+        :service_fee_amount => '1.00'
+      )
+
+      transaction.escrow_status.should be_nil
+
+      result = Braintree::Transaction.submit_for_release(transaction.id)
+      result.errors.for(:transaction).on(:base)[0].code.should == Braintree::ErrorCodes::Transaction::CannotSubmitForRelease
+    end
+  end
+
+  describe "self.submit_for_release!" do
+    it "returns the transaction when successful" do
+      original_transaction = create_escrowed_transcation
+
+      transaction = Braintree::Transaction.submit_for_release!(original_transaction.id)
+      transaction.escrow_status.should == Braintree::Transaction::EscrowStatus::SubmittedForRelease
+    end
+
+    it "raises an error when transaction is not successful" do
+      transaction = Braintree::Transaction.sale!(
+        :amount => Braintree::Test::TransactionAmounts::Authorize,
+        :merchant_account_id => SpecHelper::NonDefaultSubMerchantAccountId,
+        :credit_card => {
+          :number => Braintree::Test::CreditCardNumbers::Visa,
+          :expiration_date => "05/2009"
+        },
+        :service_fee_amount => '1.00'
+      )
+
+      transaction.escrow_status.should be_nil
+
+      expect do
+        Braintree::Transaction.submit_for_release!(transaction.id)
+      end.to raise_error(Braintree::ValidationsFailed)
+    end
+  end
+
+  describe "self.cancel_release" do
+    it "returns the transaction if successful" do
+      transaction = create_escrowed_transcation
+      result = Braintree::Transaction.submit_for_release(transaction.id)
+      result.transaction.escrow_status.should == Braintree::Transaction::EscrowStatus::SubmittedForRelease
+
+      result = Braintree::Transaction.cancel_release(transaction.id)
+
+      result.success?.should be_true
+      result.transaction.escrow_status.should == Braintree::Transaction::EscrowStatus::HeldInEscrow
+    end
+
+    it "returns an error result if escrow_status is not SubmittedForRelease" do
+      transaction = create_escrowed_transcation
+
+      result = Braintree::Transaction.cancel_release(transaction.id)
+
+      result.success?.should be_false
+      result.errors.for(:transaction).on(:base)[0].code.should == Braintree::ErrorCodes::Transaction::CannotCancelRelease
+    end
+  end
+
+  describe "self.cancel_release!" do
+    it "returns the transaction when release is cancelled" do
+      transaction = create_escrowed_transcation
+      result = Braintree::Transaction.submit_for_release(transaction.id)
+      result.transaction.escrow_status.should == Braintree::Transaction::EscrowStatus::SubmittedForRelease
+
+      transaction = Braintree::Transaction.cancel_release!(transaction.id)
+
+      transaction.escrow_status.should == Braintree::Transaction::EscrowStatus::HeldInEscrow
+    end
+
+    it "raises an error when release cannot be cancelled" do
+      transaction = create_escrowed_transcation
+
+      expect {
+        transaction = Braintree::Transaction.cancel_release!(transaction.id)
+      }.to raise_error(Braintree::ValidationsFailed)
+    end
+  end
+
   describe "self.credit" do
     it "returns a successful result with type=credit if successful" do
       result = Braintree::Transaction.credit(
@@ -1889,6 +2020,76 @@ describe Braintree::Transaction do
 
         created_transaction.disbursed?.should == false
       end
+    end
+  end
+
+  describe "self.hold_for_escrow" do
+    it "returns the transaction if successful" do
+      result = Braintree::Transaction.create(
+        :type => "sale",
+        :amount => Braintree::Test::TransactionAmounts::Authorize,
+        :merchant_account_id => SpecHelper::NonDefaultSubMerchantAccountId,
+        :credit_card => {
+          :number => Braintree::Test::CreditCardNumbers::Visa,
+          :expiration_date => "12/12",
+        },
+        :service_fee_amount => "10.00"
+      )
+
+      result.transaction.escrow_status.should be_nil
+      result = Braintree::Transaction.hold_for_escrow(result.transaction.id)
+
+      result.success?.should be_true
+      result.transaction.escrow_status.should == Braintree::Transaction::EscrowStatus::SubmittedForEscrow
+    end
+
+    it "returns an error result if the transaction cannot be held in escrow" do
+      transaction = Braintree::Transaction.sale!(
+        :amount => Braintree::Test::TransactionAmounts::Authorize,
+        :merchant_account_id => SpecHelper::NonDefaultMerchantAccountId,
+        :credit_card => {
+          :number => Braintree::Test::CreditCardNumbers::Visa,
+          :expiration_date => "05/2009"
+        }
+      )
+
+      result = Braintree::Transaction.hold_for_escrow(transaction.id)
+      result.errors.for(:transaction).on(:base)[0].code.should == Braintree::ErrorCodes::Transaction::CannotHoldForEscrow
+    end
+  end
+
+  describe "self.hold_for_escrow!" do
+    it "returns the transaction if successful" do
+      result = Braintree::Transaction.create(
+        :type => "sale",
+        :amount => Braintree::Test::TransactionAmounts::Authorize,
+        :merchant_account_id => SpecHelper::NonDefaultSubMerchantAccountId,
+        :credit_card => {
+          :number => Braintree::Test::CreditCardNumbers::Visa,
+          :expiration_date => "12/12",
+        },
+        :service_fee_amount => "10.00"
+      )
+
+      result.transaction.escrow_status.should be_nil
+      transaction = Braintree::Transaction.hold_for_escrow!(result.transaction.id)
+
+      transaction.escrow_status.should == Braintree::Transaction::EscrowStatus::SubmittedForEscrow
+    end
+
+    it "raises an error if the transaction cannot be held in escrow" do
+      transaction = Braintree::Transaction.sale!(
+        :amount => Braintree::Test::TransactionAmounts::Authorize,
+        :merchant_account_id => SpecHelper::NonDefaultMerchantAccountId,
+        :credit_card => {
+          :number => Braintree::Test::CreditCardNumbers::Visa,
+          :expiration_date => "05/2009"
+        }
+      )
+
+      expect do
+        Braintree::Transaction.hold_for_escrow!(transaction.id)
+      end.to raise_error(Braintree::ValidationsFailed)
     end
   end
 
@@ -2235,6 +2436,23 @@ describe Braintree::Transaction do
     )
 
     response = Braintree::Configuration.instantiate.http.put "/transactions/#{transaction.id}/settle"
+    Braintree::Transaction.find(transaction.id)
+  end
+
+  def create_escrowed_transcation
+    transaction = Braintree::Transaction.sale!(
+      :amount => Braintree::Test::TransactionAmounts::Authorize,
+      :merchant_account_id => SpecHelper::NonDefaultSubMerchantAccountId,
+      :credit_card => {
+        :number => Braintree::Test::CreditCardNumbers::Visa,
+        :expiration_date => "05/2009"
+      },
+        :service_fee_amount => '1.00',
+        :options => { :hold_for_escrow => true }
+    )
+
+    response = Braintree::Configuration.instantiate.http.put "/transactions/#{transaction.id}/settle"
+    response = Braintree::Configuration.instantiate.http.put "/transactions/#{transaction.id}/escrow"
     Braintree::Transaction.find(transaction.id)
   end
 
